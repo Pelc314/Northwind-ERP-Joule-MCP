@@ -1,0 +1,8 @@
+---
+applications:
+  - name: joule-mcp-server
+    memory: 256M
+    disk_quota: 512M
+    buildpacks:
+      - nodejs_buildpack
+    command: npm start
