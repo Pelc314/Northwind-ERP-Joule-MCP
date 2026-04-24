@@ -223,3 +223,7 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
     console.log(`MCP Server running on port ${PORT}`);
 });
+
+app.get('/', (req, res) => {
+  res.send("Joule MCP Server is running and healthy! Connect via the /mcp endpoint.");
+});
