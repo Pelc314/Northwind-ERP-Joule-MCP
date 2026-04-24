@@ -24,7 +24,10 @@
   "homepage": "https://github.com/Pelc314/Northwind-ERP-Joule-MCP#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@sap/xsenv": "^6.2.0",
+    "@sap/xssec": "^4.13.0",
     "cors": "^2.8.6",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "passport": "^0.7.0"
   }
 }
