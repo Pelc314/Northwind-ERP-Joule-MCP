@@ -1,6 +1,6 @@
 ---
 applications:
-  - name: joule-mcp-server
+  - name: northwind-mcp-server
     memory: 256M
     disk_quota: 512M
     buildpacks:
