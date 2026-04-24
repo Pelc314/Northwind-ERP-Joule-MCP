@@ -1,6 +1,7 @@
 // index.js - MCP Server for Northwind ERP Operations
 const express = require('express');
 const cors = require('cors');
+const { randomUUID } = require('crypto');
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
@@ -197,21 +198,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 });
 // 4. Expose MCP Streamable HTTP endpoint for Joule Studio
-let transport;
+const transports = {};
 
 app.post('/mcp', async (req, res) => {
     try {
-        if (!transport) {
+        const sessionId = req.headers['mcp-session-id'];
+        let transport;
+
+        if (sessionId && transports[sessionId]) {
+            transport = transports[sessionId];
+        } else if (!sessionId && req.body && req.body.method === 'initialize') {
+            // Create a new stateful transport for each client session.
             transport = new StreamableHTTPServerTransport({
-                // Stateless mode is sufficient for tool-only workflows and simpler behind destinations.
-                sessionIdGenerator: undefined,
-                enableJsonResponse: true
+                sessionIdGenerator: () => randomUUID(),
+                enableJsonResponse: true,
+                onsessioninitialized: (newSessionId) => {
+                    transports[newSessionId] = transport;
+                }
             });
+
+            transport.onclose = () => {
+                if (transport.sessionId && transports[transport.sessionId]) {
+                    delete transports[transport.sessionId];
+                }
+            };
+
             await server.connect(transport);
+        } else {
+            res.status(400).json({
+                jsonrpc: '2.0',
+                error: {
+                    code: -32000,
+                    message: 'Bad Request: missing or invalid MCP session'
+                },
+                id: null
+            });
+            return;
         }
 
         await transport.handleRequest(req, res, req.body);
     } catch (error) {
+        console.error('Error handling /mcp request:', error);
         if (!res.headersSent) {
             res.status(500).json({
                 jsonrpc: '2.0',
