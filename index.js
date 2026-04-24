@@ -198,44 +198,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 });
 // 4. Expose MCP Streamable HTTP endpoint for Joule Studio
-const transports = {};
+// Create ONE stateful transport that manages all sessions internally
+const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    enableJsonResponse: true
+});
+
+// Connect the server ONCE to the transport
+let serverConnected = false;
 
 app.post('/mcp', async (req, res) => {
     try {
-        const sessionId = req.headers['mcp-session-id'];
-        let transport;
-
-        if (sessionId && transports[sessionId]) {
-            transport = transports[sessionId];
-        } else if (!sessionId && req.body && req.body.method === 'initialize') {
-            // Create a new stateful transport for each client session.
-            transport = new StreamableHTTPServerTransport({
-                sessionIdGenerator: () => randomUUID(),
-                enableJsonResponse: true,
-                onsessioninitialized: (newSessionId) => {
-                    transports[newSessionId] = transport;
-                }
-            });
-
-            transport.onclose = () => {
-                if (transport.sessionId && transports[transport.sessionId]) {
-                    delete transports[transport.sessionId];
-                }
-            };
-
+        // Lazy-initialize: connect server on first request
+        if (!serverConnected) {
             await server.connect(transport);
-        } else {
-            res.status(400).json({
-                jsonrpc: '2.0',
-                error: {
-                    code: -32000,
-                    message: 'Bad Request: missing or invalid MCP session'
-                },
-                id: null
-            });
-            return;
+            serverConnected = true;
         }
 
+        // Let the transport handle all session management and routing
         await transport.handleRequest(req, res, req.body);
     } catch (error) {
         console.error('Error handling /mcp request:', error);
