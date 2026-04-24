@@ -2,27 +2,12 @@
 const express = require('express');
 const cors = require('cors');
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
-const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
+const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
-const passport = require('passport');
-const { JWTStrategy } = require('@sap/xssec');
-const xsenv = require('@sap/xsenv');
 
 const app = express();
 app.use(cors());
-const jsonParser = express.json();
-app.use((req, res, next) => {
-    if (req.path === '/messages') {
-        return next();
-    }
-    return jsonParser(req, res, next);
-});
-
-const services = xsenv.getServices({ uaa: { tag: 'xsuaa' } });
-passport.use(new JWTStrategy(services.uaa));
-app.use(passport.initialize());
-// Protect ALL routes: Every request must have a valid Bearer token
-app.use(passport.authenticate('jwt', { session: false }));
+app.use(express.json());
 
 // 1. Initialize the MCP Server
 const server = new Server(
@@ -211,20 +196,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
 });
-// 4. Expose the MCP Endpoints via Express
+// 4. Expose MCP Streamable HTTP endpoint for Joule Studio
 let transport;
 
-app.get('/mcp', async (req, res) => {
-    transport = new SSEServerTransport('/messages', res);
-    await server.connect(transport);
+app.post('/mcp', async (req, res) => {
+    try {
+        if (!transport) {
+            transport = new StreamableHTTPServerTransport({
+                // Stateless mode is sufficient for tool-only workflows and simpler behind destinations.
+                sessionIdGenerator: undefined,
+                enableJsonResponse: true
+            });
+            await server.connect(transport);
+        }
+
+        await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+        if (!res.headersSent) {
+            res.status(500).json({
+                jsonrpc: '2.0',
+                error: {
+                    code: -32603,
+                    message: 'Internal server error'
+                },
+                id: null
+            });
+        }
+    }
 });
 
-app.post('/messages', async (req, res) => {
-    if (transport) {
-        await transport.handlePostMessage(req, res);
-    } else {
-        res.status(500).send("Session not initialized");
-    }
+app.get('/mcp', async (req, res) => {
+    res.status(405).set('Allow', 'POST').send('Method Not Allowed');
+});
+
+app.delete('/mcp', async (req, res) => {
+    res.status(405).set('Allow', 'POST').send('Method Not Allowed');
 });
 
 // Start the server (Port 8080 is standard for BTP Cloud Foundry)
@@ -234,5 +240,5 @@ app.listen(PORT, () => {
 });
 
 app.get('/', (req, res) => {
-  res.send("Joule MCP Server is running and healthy! Connect via the /mcp endpoint.");
+    res.send("Joule MCP Server is running and healthy! Connect via the /mcp endpoint.");
 });
