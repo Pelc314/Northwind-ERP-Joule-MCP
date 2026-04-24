@@ -4,6 +4,9 @@ const cors = require('cors');
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
+const passport = require('passport');
+const { JWTStrategy } = require('@sap/xssec');
+const xsenv = require('@sap/xsenv');
 
 const app = express();
 app.use(cors());
@@ -14,6 +17,12 @@ app.use((req, res, next) => {
     }
     return jsonParser(req, res, next);
 });
+
+const services = xsenv.getServices({ uaa: { tag: 'xsuaa' } });
+passport.use(new JWTStrategy(services.uaa));
+app.use(passport.initialize());
+// Protect ALL routes: Every request must have a valid Bearer token
+app.use(passport.authenticate('jwt', { session: false }));
 
 // 1. Initialize the MCP Server
 const server = new Server(

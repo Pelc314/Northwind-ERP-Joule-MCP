@@ -6,3 +6,5 @@ applications:
     buildpacks:
       - nodejs_buildpack
     command: npm start
+    services:
+      - northwind-mcp-xsuaa
